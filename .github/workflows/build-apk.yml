@@ -20,13 +20,19 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK 35
+        shell: bash
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          set -e
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "sdkmanager not found at $SDKMANAGER"
+            find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -print || true
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -34,23 +40,38 @@ jobs:
           gradle-version: '8.9'
 
       - name: Extract project
+        shell: bash
         run: |
+          set -e
+          ZIP_COUNT=$(find . -maxdepth 1 -type f -name "*.zip" | wc -l)
+          if [ "$ZIP_COUNT" -ne 1 ]; then
+            echo "Expected exactly one ZIP in repository root, found: $ZIP_COUNT"
+            find . -maxdepth 1 -type f -name "*.zip" -print
+            exit 1
+          fi
           ZIP_FILE=$(find . -maxdepth 1 -type f -name "*.zip" | head -1)
           echo "Using: $ZIP_FILE"
+          rm -rf extracted
           mkdir extracted
           unzip -q "$ZIP_FILE" -d extracted
 
       - name: Build APK
+        shell: bash
         run: |
+          set -e
           PROJECT_DIR=$(find extracted -type f -name "settings.gradle" -printf '%h\n' | head -1)
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "settings.gradle not found"
+            exit 1
+          fi
           echo "Project: $PROJECT_DIR"
           cd "$PROJECT_DIR"
           gradle :app:assembleDebug --stacktrace
           mkdir -p "$GITHUB_WORKSPACE/apk-output"
-          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/apk-output/Quran-Marey-v1.2.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/apk-output/Al-Muslim-v2.1.0.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Quran-Marey-APK
-          path: apk-output/Quran-Marey-v1.2.apk
+          name: Al-Muslim-v2.1.0-APK
+          path: apk-output/Al-Muslim-v2.1.0.apk
